@@ -1,0 +1,28 @@
+plugins {
+    id 'java-library'
+}
+
+group = 'com.lomiking'
+version = '0.1.0'
+
+java {
+    // Java 11 keeps the core usable from Android and React Native native modules.
+    sourceCompatibility = JavaVersion.VERSION_11
+    targetCompatibility = JavaVersion.VERSION_11
+}
+
+// The core has zero dependencies. Tests use a tiny built-in runner (LogicTests) instead of JUnit.
+tasks.register('logicTests', JavaExec) {
+    group = 'verification'
+    description = 'Runs LogicTests (no JUnit needed)'
+    classpath = sourceSets.test.runtimeClasspath
+    mainClass = 'com.lomiking.core.LogicTests'
+}
+check.dependsOn 'logicTests'
+
+tasks.register('playthrough', JavaExec) {
+    group = 'application'
+    description = 'Plays one simulated day with a bot and prints every event'
+    classpath = sourceSets.test.runtimeClasspath
+    mainClass = 'com.lomiking.core.PlaythroughDemo'
+}

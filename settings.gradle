@@ -1,0 +1,3 @@
+rootProject.name = 'LomiKing-BatangasRush'
+include 'core'
+include 'devserver'

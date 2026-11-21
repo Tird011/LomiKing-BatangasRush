@@ -1,0 +1,35 @@
+newmtl broth
+Kd 0.690 0.439 0.204
+
+newmtl fan
+Kd 0.871 0.745 0.471
+
+newmtl fan_trim
+Kd 0.769 0.235 0.275
+
+newmtl flame_o
+Kd 1.000 0.541 0.118
+
+newmtl flame_y
+Kd 1.000 0.886 0.314
+
+newmtl grate
+Kd 0.141 0.141 0.157
+
+newmtl handle
+Kd 0.710 0.475 0.247
+
+newmtl knob
+Kd 0.980 0.980 0.965
+
+newmtl noodle
+Kd 0.965 0.839 0.588
+
+newmtl stove
+Kd 0.314 0.722 0.675
+
+newmtl stove_top
+Kd 0.235 0.251 0.282
+
+newmtl wok
+Kd 0.227 0.227 0.259

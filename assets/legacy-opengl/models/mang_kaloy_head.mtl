@@ -1,0 +1,10 @@
+newmtl face
+Kd 1 1 1
+map_Kd ../textures/face_happy.png
+d 1
+
+newmtl hair
+Kd 0.110 0.094 0.102
+
+newmtl skin
+Kd 0.910 0.659 0.404

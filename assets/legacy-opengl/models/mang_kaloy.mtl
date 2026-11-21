@@ -1,0 +1,25 @@
+newmtl apron
+Kd 0.898 0.282 0.302
+
+newmtl apron_trim
+Kd 1.000 0.839 0.353
+
+newmtl face
+Kd 1 1 1
+map_Kd ../textures/face_happy.png
+d 1
+
+newmtl hair
+Kd 0.110 0.094 0.102
+
+newmtl pants
+Kd 0.275 0.353 0.549
+
+newmtl shirt
+Kd 0.980 0.980 0.965
+
+newmtl skin
+Kd 0.910 0.659 0.404
+
+newmtl towel
+Kd 0.471 0.745 0.902
