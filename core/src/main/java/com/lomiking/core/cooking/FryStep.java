@@ -7,8 +7,9 @@ public class FryStep extends TimedStep {
     private final boolean needsFlip;
     private double flippedAt = -1;
 
-    public FryStep(String what, double targetSeconds, boolean needsFlip) {
-        super("Fry the " + what, targetSeconds);
+    public FryStep(String what, double targetSeconds, boolean needsFlip) { this(what, targetSeconds, needsFlip, 1); }
+    public FryStep(String what, double targetSeconds, boolean needsFlip, double tolerance) {
+        super("Fry the " + what, targetSeconds, tolerance);
         this.needsFlip = needsFlip;
     }
     @Override public String getHint() {

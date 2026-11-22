@@ -13,7 +13,7 @@ public class TitaCustomer extends Customer {
     @Override public String getModelId() { return "customer_tita"; }
     @Override protected double basePatience() { return 75; }
     @Override protected List<Dish> chooseDishes(Menu menu, Random rng) {
-        return Collections.singletonList(rng.nextBoolean() ? menu.get("lomi_overload") : menu.get("lomi_batangas"));
+        return Collections.singletonList(menu.getOrAny(rng.nextBoolean() && menu.has("lomi_overload") ? "lomi_overload" : "lomi_batangas", rng));
     }
     @Override protected double chanceOfExtra() { return 0.9; }
     @Override protected double qualityWeight() { return 0.85; }

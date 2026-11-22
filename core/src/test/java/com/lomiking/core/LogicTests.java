@@ -227,7 +227,7 @@ public class LogicTests {
     }
 
     public static void testDeliveryLoop() {
-        GameEngine e = startedEngine(GameConfig.defaults().deliveryChance(1).spawnInterval(500, 500));
+        GameEngine e = startedEngine(GameConfig.defaults().deliveryChance(1).spawnInterval(500, 500).startLevel(4));
         for (int i = 0; i < 40 && e.getOrders().isEmpty(); i++) e.update(0.1);
         check(!e.getOrders().isEmpty(), "delivery order arrived");
         Order o = e.getOrders().get(0);
@@ -249,6 +249,7 @@ public class LogicTests {
     public static void testOutOfStockThenRestock() {
         GameConfig cfg = GameConfig.defaults().deliveryChance(0);
         cfg.startingStock = 0;
+        cfg.morningSupplier = false;
         GameEngine e = startedEngine(cfg);
         Customer c = waitForWalkIn(e);
         e.takeOrder(c.getId());
@@ -271,6 +272,92 @@ public class LogicTests {
         check(e.nextDay().isOk() && e.getDay() == 2, "day 2");
     }
 
+    // ---------------- progression, upgrades, staff, saves ----------------
+    public static void testStartsSmall() {
+        GameEngine e = startedEngine(GameConfig.defaults());
+        check(e.getProgress().getLevel() == 1, "level 1");
+        check(e.getMenu().all().size() == 1 && e.getMenu().has("lomi_batangas"), "only Lomi Batangas at first");
+        check(e.shop().getTables().size() == 2, "2 tables");
+        check(e.getProgress().getGoals().size() == 3, "3 daily goals");
+        check(e.inventory().get("noodles") >= 6, "supplier stocked the pantry");
+    }
+
+    public static void testLevelUpUnlocksDishes() {
+        com.lomiking.core.progress.Progression p = new com.lomiking.core.progress.Progression();
+        List<Integer> ups = p.addXp(com.lomiking.core.progress.Unlocks.xpToNext(1) + 5);
+        check(ups.size() == 1 && p.getLevel() == 2, "level 2");
+        check(com.lomiking.core.progress.Unlocks.unlockedDishes(2).contains("lumpiang_shanghai"), "shanghai at level 2");
+        check(!com.lomiking.core.progress.Unlocks.unlockedDishes(3).contains("tapsilog"), "tapsilog later");
+    }
+
+    public static void testStreakBonus() {
+        com.lomiking.core.progress.Progression p = new com.lomiking.core.progress.Progression();
+        p.cooked(3); p.cooked(3); p.cooked(3);
+        check(p.getStreak() == 3 && Math.abs(p.streakTipBonus() - 0.2) < 1e-9, "streak 3 gives +20% tips");
+        p.cooked(2);
+        check(p.getStreak() == 0, "a 2-star dish breaks the streak");
+    }
+
+    public static void testUpgradesNeedLevelAndMoney() {
+        GameConfig cfg = GameConfig.defaults().startLevel(2); cfg.startingMoney = 2000;
+        GameEngine e = startedEngine(cfg);
+        check(e.buyUpgrade("tables").isOk(), "buy a table");
+        check(e.shop().getTables().size() == 3, "3 tables now");
+        check(!e.buyUpgrade("knife").isOk(), "knife needs level 3");
+        GameConfig poor = GameConfig.defaults().startLevel(10); poor.startingMoney = 0; poor.morningSupplier = false;
+        check(!startedEngine(poor).buyUpgrade("tables").isOk(), "can't buy without money");
+    }
+
+    public static void testKnifeUpgradeMeansFewerCuts() {
+        java.util.List<CookingStep> base = new LomiBatangas().createSteps(new ArrayList<>(), KitchenPerks.NONE);
+        java.util.List<CookingStep> sharp = new LomiBatangas().createSteps(new ArrayList<>(), new KitchenPerks(2, 0, 0));
+        check(base.get(0).viewState().get("cutsNeeded").equals(3), "3 cuts normally");
+        check(sharp.get(0).viewState().get("cutsNeeded").equals(1), "1 cut with a level-2 knife");
+    }
+
+    public static void testHiredStaffRunTheShop() {
+        GameConfig cfg = GameConfig.defaults().startLevel(9).deliveryChance(0); cfg.startingMoney = 5000;
+        GameEngine e = startedEngine(cfg);
+        check(!e.hireWorker("nobody").isOk(), "unknown helper");
+        check(e.hireWorker("server").isOk() && e.hireWorker("cook").isOk() && e.hireWorker("cleaner").isOk(), "hire 3 helpers");
+        for (int i = 0; i < 2000; i++) e.update(0.1);    // the player does nothing at all
+        check(e.getReport().getCustomersServed() >= 3, "helpers served customers: " + e.getReport().getCustomersServed());
+        check(e.getReport().getRevenue() > 0, "and got paid");
+    }
+
+    public static void testSaveAndContinue() {
+        GameConfig cfg = GameConfig.defaults().startLevel(5); cfg.startingMoney = 3000;
+        GameEngine e = startedEngine(cfg);
+        e.buyUpgrade("tables"); e.buyUpgrade("decor"); e.hireWorker("server"); e.trainWorker("server");
+        double money = e.wallet().getBalance();
+        String save = e.exportSave();
+        GameEngine e2 = new GameEngine();
+        check(e2.importSave(save).isOk(), "loads");
+        check(e2.getProgress().getLevel() == 5, "level restored");
+        check(e2.getUpgrades().level("decor") == 1 && e2.shop().getTables().size() == 3, "upgrades restored");
+        check(e2.getStaff().get("server").getLevel() == 2, "staff restored");
+        check(Math.abs(e2.wallet().getBalance() - money) < 0.01, "money restored");
+        check(e2.startGame().isOk() && e2.getMenu().has("tapsilog"), "continues with unlocked menu");
+        check(!e2.importSave(save).isOk(), "can't load mid-game");
+    }
+
+    public static void testGoalsPayRewards() {
+        GameEngine e = startedEngine(GameConfig.defaults().deliveryChance(0));
+        double before = e.wallet().getBalance();
+        int served = 0;
+        for (int i = 0; i < 6000 && e.getState() == GameState.PLAYING; i++) {
+            for (Customer c : e.getCustomers()) if (c.getAction() == CustomerAction.IN_LINE) { e.goTo(SceneId.COUNTER); e.takeOrder(c.getId()); }
+            for (Order o : e.getOrders()) if (o.isOpen() && o.nextLineToCook() >= 0) { e.goTo(SceneId.COUNTER); e.goTo(SceneId.KITCHEN); if (e.startCooking(o.getId()).isOk()) AutoPlayer.cookCurrentDish(e); }
+            for (Order o : e.getOrders()) if (o.getStatus() == OrderStatus.READY) { e.goTo(SceneId.COUNTER); if (e.serve(o.getId()).isOk()) served++; }
+            for (Task t : e.getTaskBoard().open()) if (t.isInteractive()) { e.goTo(SceneId.COUNTER); e.goTo(t.getSector().getScene()); if (e.startTask(t.getId()).isOk()) AutoPlayer.doChore(e, t); }
+            e.update(0.1);
+        }
+        check(served >= 4, "served a few: " + served);
+        check(e.getProgress().getLevel() >= 2 || e.getProgress().getXp() > 50, "gained XP/levels");
+        check(e.getProgress().goalsDone() >= 1, "completed a daily goal");
+        check(e.getReport().getBonuses() > 0, "goal/achievement bonuses paid");
+    }
+
     // ---------------- bridge ----------------
     @SuppressWarnings("unchecked")
     public static void testBridgeJsonRoundTrip() {
@@ -291,6 +378,11 @@ public class LogicTests {
         check(((List<Object>) Json.parse(b.drainEvents())).isEmpty(), "drained");
         Map<String, Object> cat = Json.parseObject(b.catalog());
         check(((List<Object>) cat.get("menu")).size() == 5, "5 dishes");
+        snap = Json.parseObject(b.snapshot());
+        check(snap.get("progress") instanceof Map && snap.get("upgrades") instanceof List && snap.get("staff") instanceof List, "progression in snapshot");
+        check(((List<Object>) snap.get("goals")).size() == 3, "goals in snapshot");
+        String save = b.exportSave();
+        check(save.contains("\"progress\""), "save exported");
     }
 
     public static void testJsonEscapes() {

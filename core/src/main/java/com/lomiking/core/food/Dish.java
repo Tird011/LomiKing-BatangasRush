@@ -1,6 +1,7 @@
 package com.lomiking.core.food;
 
 import com.lomiking.core.cooking.CookingStep;
+import com.lomiking.core.cooking.KitchenPerks;
 import com.lomiking.core.cooking.PlateStep;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -27,11 +28,13 @@ public abstract class Dish {
     /** Ingredient ids used once per serving. */
     public abstract List<String> getIngredientIds();
     /** The mini-games for this dish, excluding plating. */
-    protected abstract List<CookingStep> buildSteps();
+    protected abstract List<CookingStep> buildSteps(KitchenPerks perks);
 
     /** Full step list: the dish's own steps plus plating with the customer's requested extras. */
-    public final List<CookingStep> createSteps(List<String> extras) {
-        List<CookingStep> steps = new ArrayList<>(buildSteps());
+    public final List<CookingStep> createSteps(List<String> extras) { return createSteps(extras, KitchenPerks.NONE); }
+
+    public final List<CookingStep> createSteps(List<String> extras, KitchenPerks perks) {
+        List<CookingStep> steps = new ArrayList<>(buildSteps(perks));
         steps.add(new PlateStep(extras));
         return Collections.unmodifiableList(steps);
     }

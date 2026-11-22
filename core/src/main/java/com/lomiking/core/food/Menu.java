@@ -21,6 +21,21 @@ public final class Menu {
     }
 
     public void add(Dish d) { dishes.put(d.getId(), d); }
+
+    /** A copy with only the given dishes (what the player has unlocked so far). */
+    public Menu only(java.util.Collection<String> ids) {
+        Menu m = new Menu();
+        for (Dish d : dishes.values()) if (ids.contains(d.getId())) m.add(d);
+        return m;
+    }
+    public boolean has(String id) { return dishes.containsKey(id); }
+    /** The dish if it's on this menu, otherwise any dish (customers adapt to what's unlocked). */
+    public Dish getOrAny(String id, java.util.Random rng) {
+        Dish d = dishes.get(id);
+        if (d != null) return d;
+        List<Dish> all = all();
+        return all.get(rng.nextInt(all.size()));
+    }
     public Dish get(String id) {
         Dish d = dishes.get(id);
         if (d == null) throw new IllegalArgumentException("Not on the menu: " + id);

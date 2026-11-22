@@ -99,6 +99,17 @@ public class GameBridge {
 
     public synchronized String catalog() { return Json.stringify(SnapshotBuilder.catalog(engine)); }
 
+    /** The player's progress as JSON, to store on the phone. */
+    public synchronized String exportSave() { return engine.exportSave(); }
+
+    /** Restore progress (title screen only). @return {"ok":..,"message":..} */
+    public synchronized String importSave(String json) {
+        CommandResult r = engine.importSave(json);
+        Map<String, Object> out = new LinkedHashMap<>();
+        out.put("ok", r.isOk()); out.put("message", r.getMessage());
+        return Json.stringify(out);
+    }
+
     public String drainEvents() {
         List<Object> list = new ArrayList<>();
         synchronized (pending) {

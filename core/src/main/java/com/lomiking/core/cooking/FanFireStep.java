@@ -15,7 +15,12 @@ public class FanFireStep extends CookingStep {
     private double timeInZone, timeScorching;
     private boolean blowing;
 
-    public FanFireStep(String title, double secondsInZoneNeeded) { super(title); this.secondsInZoneNeeded = secondsInZoneNeeded; }
+    private final double gain;
+
+    public FanFireStep(String title, double secondsInZoneNeeded) { this(title, secondsInZoneNeeded, 1.0); }
+    public FanFireStep(String title, double secondsInZoneNeeded, double heatGain) {
+        super(title); this.secondsInZoneNeeded = secondsInZoneNeeded; this.gain = heatGain;
+    }
     @Override public InputType getGesture() { return InputType.MIC_LEVEL; }
     @Override public String getHint() { return "Blow into the mic or fan the fire, keep the flame in the green zone"; }
     @Override public double getProgress() { return clamp01(timeInZone / secondsInZoneNeeded); }
@@ -34,7 +39,7 @@ public class FanFireStep extends CookingStep {
     }
 
     @Override protected void onUpdate(double dt, CookingFeedback fb) {
-        heat = clamp01(heat + (blowPower * 1.4 - 0.15) * dt);
+        heat = clamp01(heat + (blowPower * 1.4 * gain - 0.15) * dt);
         blowPower = Math.max(0, blowPower - 0.6 * dt);
         if (blowing) fb.emote(Emote.BLOW, 0.3);
         if (heat >= ZONE_LOW && heat <= ZONE_HIGH) timeInZone += dt;

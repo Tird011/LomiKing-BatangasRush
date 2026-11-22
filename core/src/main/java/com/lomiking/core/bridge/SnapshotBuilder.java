@@ -98,7 +98,31 @@ public final class SnapshotBuilder {
         rm.put("dishesCooked", rep.getDishesCooked()); rm.put("tasksDone", rep.getTasksDone());
         rm.put("revenue", r(rep.getRevenue())); rm.put("tips", r(rep.getTips())); rm.put("spent", r(rep.getSpent()));
         rm.put("profit", r(rep.getProfit())); rm.put("avgRating", r(rep.getAverageRating()));
+        rm.put("fiveStars", rep.getFiveStars()); rm.put("perfectDishes", rep.getPerfectDishes());
+        rm.put("wages", r(rep.getWages())); rm.put("bonuses", r(rep.getBonuses())); rm.put("xpGained", r(rep.getXpGained()));
+        rm.put("goalsDone", e.getProgress().goalsDone());
         s.put("report", rm);
+
+        // progression, goals, shop, staff
+        s.put("progress", e.getProgress().view());
+        s.put("goals", e.getProgress().goalsView(rep));
+        List<Object> ups = new ArrayList<>();
+        for (com.lomiking.core.upgrade.Upgrade u : e.getUpgrades().all())
+            ups.add(u.view(e.getUpgrades().level(u.getId()), e.getProgress().getLevel(), e.wallet().getBalance()));
+        s.put("upgrades", ups);
+        List<Object> staff = new ArrayList<>();
+        for (com.lomiking.core.staff.Worker w : e.getStaff().all()) {
+            Map<String, Object> wm = w.view(e.getProgress().getLevel(), e.wallet().getBalance());
+            if (w instanceof com.lomiking.core.staff.CookWorker) wm.put("progress", r(((com.lomiking.core.staff.CookWorker) w).getProgressRatio()));
+            if (w instanceof com.lomiking.core.staff.RiderWorker) wm.put("out", ((com.lomiking.core.staff.RiderWorker) w).isOut());
+            staff.add(wm);
+        }
+        s.put("staff", staff);
+        s.put("achievements", e.getProgress().achievementsView());
+        Map<String, Object> pk = new LinkedHashMap<>();
+        pk.put("knife", e.getPerks().getKnife()); pk.put("stove", e.getPerks().getStove()); pk.put("recipe", e.getPerks().getRecipe());
+        pk.put("decor", e.getUpgrades().level("decor")); pk.put("sign", e.getUpgrades().level("sign")); pk.put("scooter", e.getUpgrades().level("scooter"));
+        s.put("perks", pk);
 
         DeliveryMiniGame run = e.getDeliveryRun();
         if (run != null) {
@@ -120,7 +144,7 @@ public final class SnapshotBuilder {
     public static Map<String, Object> catalog(GameEngine e) {
         Map<String, Object> s = new LinkedHashMap<>();
         List<Object> menu = new ArrayList<>();
-        for (Dish d : e.getMenu().all()) {
+        for (Dish d : e.getFullMenu().all()) {
             Map<String, Object> m = new LinkedHashMap<>();
             m.put("id", d.getId()); m.put("name", d.getName()); m.put("price", d.getPrice());
             m.put("category", d.getCategory().name()); m.put("ingredients", d.getIngredientIds()); m.put("extras", d.getPossibleExtras());

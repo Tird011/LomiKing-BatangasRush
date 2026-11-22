@@ -26,6 +26,13 @@ public class DeliveryMiniGame {
     private double distance, elapsed, condition = 1, warmth = 1, boostTime;
     private boolean finished;
 
+    private double speedMult = 1, spillMult = 1;
+
+    public DeliveryMiniGame(String orderId, double length, double fragility, Random rng, double speedMult, double spillMult) {
+        this(orderId, length, fragility, rng);
+        this.speedMult = speedMult; this.spillMult = spillMult;
+    }
+
     public DeliveryMiniGame(String orderId, double length, double fragility, Random rng) {
         this.orderId = orderId; this.length = length; this.fragility = fragility;
         ObstacleType[] types = ObstacleType.values();
@@ -48,14 +55,14 @@ public class DeliveryMiniGame {
         elapsed += dt;
         boolean boosting = boostTime > 0;
         boostTime = Math.max(0, boostTime - dt);
-        distance += (boosting ? BOOST_SPEED : SPEED) * dt;
+        distance += (boosting ? BOOST_SPEED : SPEED) * speedMult * dt;
         warmth = Math.max(0, warmth - dt * 0.012 * (1 + fragility));
         for (Obstacle o : obstacles) {
             if (!o.isPassed() && distance >= o.getPosition()) {
                 boolean hit = o.getLane() == lane;
                 o.resolve(hit);
                 if (hit) {
-                    condition = Math.max(0, condition - 0.25 * (0.5 + fragility) * (boosting ? 1.5 : 1));
+                    condition = Math.max(0, condition - 0.25 * (0.5 + fragility) * (boosting ? 1.5 : 1) * spillMult);
                     newHits.add(o);
                 }
             }

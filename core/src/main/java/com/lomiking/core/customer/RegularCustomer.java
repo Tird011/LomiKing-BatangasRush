@@ -15,7 +15,7 @@ public class RegularCustomer extends Customer {
     @Override protected List<Dish> chooseDishes(Menu menu, Random rng) {
         List<Dish> out = new ArrayList<>();
         out.add(pick(menu.all(), rng));
-        if (rng.nextDouble() < 0.25) out.add(menu.get("lumpiang_shanghai"));
+        if (menu.has("lumpiang_shanghai") && rng.nextDouble() < 0.25) out.add(menu.get("lumpiang_shanghai"));
         return out;
     }
     @Override protected double tipRate(int stars) { return stars >= 4 ? 0.1 : 0; }

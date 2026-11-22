@@ -32,6 +32,20 @@ import com.lomiking.core.food.Menu;
 import com.lomiking.core.scene.*;
 import com.lomiking.core.shop.Shop;
 import com.lomiking.core.shop.Table;
+import com.lomiking.core.cooking.KitchenPerks;
+import com.lomiking.core.food.Dish;
+import com.lomiking.core.progress.Achievement;
+import com.lomiking.core.progress.DailyGoal;
+import com.lomiking.core.progress.Progression;
+import com.lomiking.core.progress.Unlocks;
+import com.lomiking.core.staff.CookWorker;
+import com.lomiking.core.staff.RiderWorker;
+import com.lomiking.core.staff.Staff;
+import com.lomiking.core.staff.StaffContext;
+import com.lomiking.core.staff.Worker;
+import com.lomiking.core.upgrade.Upgrade;
+import com.lomiking.core.upgrade.UpgradeShop;
+import com.lomiking.core.bridge.Json;
 import com.lomiking.core.task.*;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -46,11 +60,15 @@ import java.util.Random;
  * update(dt) every frame, sends player actions through the public methods (or JSON via GameBridge),
  * and draws whatever state and events come back.
  */
-public class GameEngine implements GameContext {
+public class GameEngine implements GameContext, StaffContext {
     private final GameConfig config;
     private final Random rng;
     private final EventBus events;
-    private final Menu menu = Menu.standard();
+    private final Menu fullMenu = Menu.standard();
+    private Menu menu;                                  // only the dishes unlocked so far
+    private final Progression progress = new Progression();
+    private final UpgradeShop upgrades = new UpgradeShop();
+    private final Staff staff = new Staff();
     private final IngredientCatalog catalog = new IngredientCatalog();
     private final Inventory inventory;
     private final Wallet wallet;
@@ -96,6 +114,8 @@ public class GameEngine implements GameContext {
         this.wallet = new Wallet(config.startingMoney);
         this.market = new Market(catalog);
         this.shop = new Shop(config.tableCount);
+        progress.setLevel(config.startLevel);
+        refreshMenu();
         this.customerFactory = new CustomerFactory(rng);
         this.reputation = config.startingReputation;
         for (Scene s : new Scene[]{new MenuScene(), new CounterScene(), new KitchenScene(), new MainDinerScene(), new DeliveryHubScene()})
@@ -114,7 +134,7 @@ public class GameEngine implements GameContext {
         if (state != GameState.MENU) return reject("The game already started");
         state = GameState.PLAYING;
         emit(EventType.GAME_STARTED);
-        beginDay(1);
+        beginDay(Math.max(1, day == 0 ? 1 : day));
         return CommandResult.ok("Bukas na ang Lomihan!");
     }
 
@@ -148,7 +168,42 @@ public class GameEngine implements GameContext {
         taskBoard.clearFinished();
         report = new DayReport(d);
         switchScene(SceneId.COUNTER);
-        emit(EventType.DAY_STARTED, "day", d, "money", wallet.getBalance());
+        morningSupplier();
+        progress.newGoals(rng, deliveriesOpen());
+        emit(EventType.DAY_STARTED, "day", d, "money", wallet.getBalance(), "level", progress.getLevel());
+    }
+
+    /** The supplier tops up every ingredient the unlocked dishes use, at a small discount. */
+    private void morningSupplier() {
+        if (!config.morningSupplier) return;
+        int lvl = upgrades.level(UpgradeShop.SUPPLIER);
+        int target = 6 + 3 * lvl;
+        double discount = 0.9 - 0.05 * lvl;
+        java.util.Set<String> needed = new java.util.LinkedHashSet<>();
+        for (Dish d : menu.all()) { needed.addAll(d.getIngredientIds()); needed.addAll(d.getPossibleExtras()); }
+        double bill = 0; int items = 0;
+        for (String id : needed) {
+            int missing = target - inventory.get(id);
+            if (missing <= 0) continue;
+            double price = market.priceOf(id, missing) * discount;
+            if (!wallet.canAfford(bill + price)) continue;
+            bill += price; items += missing;
+            inventory.add(id, missing);
+        }
+        bill = Math.round(bill);
+        if (bill > 0) { wallet.spend(bill); report.recordSpent(bill); }
+        emit(EventType.SUPPLIER_DELIVERY, "items", items, "bill", bill);
+        emitMoney();
+    }
+
+    private boolean deliveriesOpen() { return progress.getLevel() >= Unlocks.DELIVERY_LEVEL; }
+
+    private void refreshMenu() {
+        menu = fullMenu.only(Unlocks.unlockedDishes(progress.getLevel()));
+    }
+
+    private KitchenPerks perks() {
+        return new KitchenPerks(upgrades.level(UpgradeShop.KNIFE), upgrades.level(UpgradeShop.STOVE), upgrades.level(UpgradeShop.RECIPE));
     }
 
     /** Advance the simulation. Call every frame with the frame time in seconds. */
@@ -162,15 +217,21 @@ public class GameEngine implements GameContext {
         updateCustomers(dt);
         currentScene.update(dt, this);
         updateDelivery();
+        staff.update(dt, this);
         if (!customers.isEmpty()) shop.addFloorDirt(dt * 0.002);
         postChores();
         for (Task t : taskBoard.update(dt, this)) onTaskFinished(t);
-        if (closed && customers.isEmpty() && delivery().getRun() == null) endDay();
+        checkGoals();
+        RiderWorker rider = (RiderWorker) staff.get("rider");
+        if (closed && customers.isEmpty() && delivery().getRun() == null && !rider.isOut()) endDay();
     }
 
     private void endDay() {
         state = GameState.DAY_OVER;
-        emit(EventType.DAY_ENDED, "day", day, "served", report.getCustomersServed(), "angry", report.getCustomersAngry(),
+        double wages = staff.totalWages();
+        double paid = Math.min(wages, wallet.getBalance());
+        if (paid > 0) { wallet.spend(paid); report.recordWages(paid); emit(EventType.WAGES_PAID, "amount", paid); emitMoney(); }
+        emit(EventType.DAY_ENDED, "day", day, "goalsDone", progress.goalsDone(), "wages", paid, "served", report.getCustomersServed(), "angry", report.getCustomersAngry(),
              "revenue", report.getRevenue(), "tips", report.getTips(), "spent", report.getSpent(), "profit", report.getProfit(),
              "avgRating", round2(report.getAverageRating()), "reputation", round2(reputation));
     }
@@ -206,10 +267,14 @@ public class GameEngine implements GameContext {
         spawnTimer -= dt;
         if (spawnTimer > 0) return;
         double repFactor = Math.max(0.6, 1.2 - 0.1 * (reputation - 3));
-        spawnTimer = (config.spawnMinSeconds + rng.nextDouble() * (config.spawnMaxSeconds - config.spawnMinSeconds)) * repFactor;
+        double tableFactor = Math.sqrt(2.0 / Math.max(2, shop.getTables().size()));
+        double signFactor = 1 - 0.12 * upgrades.level(UpgradeShop.SIGN);
+        spawnTimer = (config.spawnMinSeconds + rng.nextDouble() * (config.spawnMaxSeconds - config.spawnMinSeconds)) * repFactor * tableFactor * signFactor;
+        int queueCap = Math.min(config.maxQueue, shop.getTables().size() + 1);
 
-        if (rng.nextDouble() < config.deliveryChance) {
+        if (deliveriesOpen() && rng.nextDouble() < config.deliveryChance) {
             DeliveryCustomer c = customerFactory.createDelivery();
+            c.scalePatience(patienceFactor());
             customers.add(c);
             Order o = c.placeOrder(menu, rng, nextOrderId(), time);
             orders.put(o.getId(), o);
@@ -217,12 +282,15 @@ public class GameEngine implements GameContext {
             post(new DeliveryTask(taskBoard.nextId(), o, c.getAddress()));
             emit(EventType.CUSTOMER_ARRIVED, "customerId", c.getId(), "type", c.getTypeLabel(), "name", c.getName(), "model", c.getModelId(), "remote", true);
             emit(EventType.ORDER_CREATED, "orderId", o.getId(), "customerId", c.getId(), "summary", o.summary(), "delivery", true);
-        } else if (countInLine() < config.maxQueue) {
+        } else if (countInLine() < queueCap) {
             Customer c = customerFactory.createWalkIn(reputation);
+            c.scalePatience(patienceFactor());
             customers.add(c);
             emit(EventType.CUSTOMER_ARRIVED, "customerId", c.getId(), "type", c.getTypeLabel(), "name", c.getName(), "model", c.getModelId(), "remote", false);
         }
     }
+
+    private double patienceFactor() { return config.patienceMultiplier * (1 + 0.15 * upgrades.level(UpgradeShop.DECOR)); }
 
     private int countInLine() {
         int n = 0;
@@ -263,13 +331,18 @@ public class GameEngine implements GameContext {
     private void onCustomerPays(Customer c) {
         Rating r = c.rate();
         Payment p = c.pay();
-        wallet.earn(p.getTotal());
-        report.recordSale(p.getPrice(), p.getTip(), r.getStars());
+        double bonusTip = Math.round(p.getPrice() * (0.05 * upgrades.level(UpgradeShop.DECOR) + progress.streakTipBonus()) * (r.getStars() >= 3 ? 1 : 0));
+        wallet.earn(p.getTotal() + bonusTip);
+        report.recordSale(p.getPrice(), p.getTip() + bonusTip, r.getStars());
+        progress.served(r.getStars(), p.getTotal() + bonusTip);
+        if (c.isRemote()) { progress.delivered(); }
+        gainXp(8 + 3 * r.getStars() + (c.isRemote() ? 10 : 0), c.isRemote() ? "Delivery" : "Happy customer");
+        checkAchievements();
         reputation = reputation * 0.9 + r.getStars() * 0.1;
         if (c.getTableId() > 0) shop.vacate(c.getTableId(), 0.4 + 0.15 * c.getOrder().getLines().size(), c.getOrder().getLines().size());
         react(r.getStars() >= 5 ? Emote.LAUGH : r.getStars() <= 2 ? Emote.NERVOUS : Emote.HAPPY, 2.0);
         emit(EventType.CUSTOMER_PAID, "customerId", c.getId(), "stars", r.getStars(), "comment", r.getComment(),
-             "price", p.getPrice(), "tip", p.getTip());
+             "price", p.getPrice(), "tip", p.getTip() + bonusTip, "bonusTip", bonusTip);
         emitMoney();
     }
 
@@ -280,6 +353,10 @@ public class GameEngine implements GameContext {
         Customer c = customerId == null ? firstInLine() : findCustomer(customerId);
         if (c == null) return reject("No customer waiting");
         if (c.getAction() != CustomerAction.IN_LINE) return reject(c.getName() + " isn't in line");
+        return doTakeOrder(c);
+    }
+
+    private CommandResult doTakeOrder(Customer c) {
         Table table = shop.firstAvailableTable();
         if (table == null) return reject("No clean table free. Wipe a table first!");
         shop.seat(c.getId());
@@ -306,6 +383,10 @@ public class GameEngine implements GameContext {
         if (o == null) return reject("No order ready to serve");
         if (o.isDelivery()) return reject("That's a delivery order. Take it to the delivery hub");
         if (o.getStatus() != OrderStatus.READY) return reject("Order " + o.getId() + " is " + o.getStatus());
+        return doServe(o);
+    }
+
+    private CommandResult doServe(Order o) {
         Customer c = findCustomer(o.getCustomerId());
         if (c == null || c.getAction() != CustomerAction.WAITING_FOR_FOOD) return reject("The customer isn't waiting anymore");
         o.markServed();
@@ -347,7 +428,7 @@ public class GameEngine implements GameContext {
         }
         inventory.consume(needed);
         o.startCooking(line);
-        CookingSession s = new CookingSession(o.getId(), line, ol.getDish(), ol.getExtras());
+        CookingSession s = new CookingSession(o.getId(), line, ol.getDish(), ol.getExtras(), perks());
         k.setSession(s);
         emit(EventType.COOKING_STARTED, "orderId", o.getId(), "dish", ol.getDish().getId(), "steps", s.getStepCount());
         s.begin(cookingListener);
@@ -366,8 +447,20 @@ public class GameEngine implements GameContext {
         emit(EventType.COOKING_FINISHED, "orderId", s.getOrderId(), "dish", s.getDish().getId(),
              "quality", round2(result.getQuality()), "stars", result.getCookStars(), "burnt", result.isBurnt());
         react(result.getCookStars() == 3 ? Emote.LAUGH : result.getCookStars() == 1 ? Emote.NERVOUS : Emote.HAPPY, 2.0);
+        int before = progress.getStreak();
+        int streak = progress.cooked(result.getCookStars());
+        if (result.getCookStars() >= 3) {
+            report.recordPerfectDish();
+            gainXp(5, "Perfect dish");
+            if (streak >= 2) emit(EventType.STREAK, "streak", streak, "bonus", progress.streakTipBonus());
+        } else if (before >= 2) emit(EventType.STREAK_BROKEN, "was", before);
+        checkAchievements();
         if (o == null || o.getStatus() == OrderStatus.CANCELLED) return;   // customer left meanwhile: wasted
-        o.finishCooking(s.getLineIndex(), result);
+        completeLine(o, s.getLineIndex(), result);
+    }
+
+    private void completeLine(Order o, int line, CookedDish result) {
+        o.finishCooking(line, result);
         if (o.getStatus() == OrderStatus.READY)
             emit(EventType.ORDER_READY, "orderId", o.getId(), "delivery", o.isDelivery(), "quality", round2(o.averageQuality()));
     }
@@ -432,6 +525,7 @@ public class GameEngine implements GameContext {
         if (t.getStatus() == TaskStatus.DONE) {
             if (t.getRewardMoney() > 0) { wallet.earn(t.getRewardMoney()); emitMoney(); }
             report.recordTask(true);
+            if (t.isInteractive() || t instanceof RestockTask) { report.recordChore(); gainXp(3, "Chore done"); }
             if (t instanceof CleanTableTask) emit(EventType.TABLE_CLEANED, "tableId", ((CleanTableTask) t).getTableId());
             emit(EventType.TASK_COMPLETED, "taskId", t.getId(), "title", t.getTitle(), "reward", t.getRewardMoney());
         } else {
@@ -467,7 +561,8 @@ public class GameEngine implements GameContext {
         if (!o.isDelivery()) return reject("That order is for a customer inside");
         if (o.getStatus() != OrderStatus.READY) return reject("Order " + o.getId() + " is " + o.getStatus());
         o.markOutForDelivery();
-        hub.setRun(new DeliveryMiniGame(o.getId(), config.deliveryDistance, o.maxFragility(), rng));
+        int sc = upgrades.level(UpgradeShop.SCOOTER);
+        hub.setRun(new DeliveryMiniGame(o.getId(), config.deliveryDistance, o.maxFragility(), rng, 1 + 0.15 * sc, Math.max(0.3, 1 - 0.2 * sc)));
         emit(EventType.DELIVERY_STARTED, "orderId", o.getId(), "environment", hub.getEnvironmentModel());
         return CommandResult.ok("Off we go!");
     }
@@ -486,10 +581,7 @@ public class GameEngine implements GameContext {
         Customer c = o == null ? null : findCustomer(o.getCustomerId());
         boolean stillWanted = o != null && o.getStatus() == OrderStatus.OUT_FOR_DELIVERY && c != null && !c.getAction().isGone();
         if (run.isSuccess() && stillWanted) {
-            o.markDelivered();
-            c.receiveFood(o.averageQuality() * run.getQuality());
-            report.recordDelivery(true);
-            emit(EventType.DELIVERY_FINISHED, "orderId", o.getId(), "quality", round2(run.getQuality()));
+            finishDelivery(o, c, run.getQuality(), false);
             react(Emote.LAUGH, 1.5);
         } else {
             if (o != null && o.isOpen()) o.cancel();
@@ -499,6 +591,231 @@ public class GameEngine implements GameContext {
             react(Emote.UH_OH, 2.0);
         }
         emit(EventType.SCENE_CHANGED, "from", SceneId.DELIVERY_HUB.name(), "to", SceneId.DELIVERY_HUB.name(), "environment", hub.getEnvironmentModel());
+    }
+
+    private void finishDelivery(Order o, Customer c, double tripQuality, boolean byRider) {
+        o.markDelivered();
+        c.receiveFood(o.averageQuality() * tripQuality);
+        report.recordDelivery(true);
+        emit(EventType.DELIVERY_FINISHED, "orderId", o.getId(), "quality", round2(tripQuality), "byRider", byRider);
+    }
+
+    // =====================================================================================
+    // Progression: XP, goals, achievements
+    // =====================================================================================
+
+    private void gainXp(int amount, String reason) {
+        report.recordXp(amount);
+        List<Integer> ups = progress.addXp(amount);
+        emit(EventType.XP_GAINED, "amount", amount, "reason", reason, "xp", progress.getXp(), "level", progress.getLevel());
+        for (int lvl : ups) {
+            refreshMenu();
+            emit(EventType.LEVEL_UP, "level", lvl, "unlocks", String.join("|", Unlocks.textFor(lvl)));
+            react(Emote.LAUGH, 3.0);
+        }
+        if (!ups.isEmpty()) checkAchievements();
+    }
+
+    private void checkGoals() {
+        for (DailyGoal g : progress.checkGoals(report)) {
+            wallet.earn(g.getRewardMoney());
+            report.recordBonus(g.getRewardMoney());
+            emit(EventType.GOAL_COMPLETED, "title", g.title(), "money", g.getRewardMoney(), "xp", g.getRewardXp(), "done", progress.goalsDone());
+            emitMoney();
+            gainXp(g.getRewardXp(), "Daily goal");
+        }
+    }
+
+    private void checkAchievements() {
+        progress.setTables(shop.getTables().size());
+        for (Achievement a : progress.checkAchievements()) {
+            wallet.earn(a.getReward());
+            report.recordBonus(a.getReward());
+            emit(EventType.ACHIEVEMENT_UNLOCKED, "id", a.getId(), "title", a.getTitle(), "description", a.getDescription(), "reward", a.getReward());
+            emitMoney();
+        }
+    }
+
+    // =====================================================================================
+    // Upgrades and staff (allowed any time after the menu: during the day, paused or between days)
+    // =====================================================================================
+
+    public CommandResult buyUpgrade(String id) {
+        if (state == GameState.MENU) return reject("Start the game first");
+        Upgrade u = upgrades.get(id);
+        if (u == null) return reject("Unknown upgrade " + id);
+        if (progress.getLevel() < u.getUnlockLevel()) return reject(u.getName() + " unlocks at level " + u.getUnlockLevel());
+        double cost = upgrades.nextCost(id);
+        if (cost < 0) return reject(u.getName() + " is already maxed");
+        if (!wallet.spend(cost)) return reject("Not enough money (needs P" + (int) cost + ")");
+        upgrades.raise(id);
+        report.recordSpent(cost);
+        if (UpgradeShop.TABLES.equals(id)) shop.addTable();
+        emit(EventType.UPGRADE_BOUGHT, "id", id, "name", u.getName(), "level", upgrades.level(id), "effect", u.effect(upgrades.level(id)));
+        emitMoney();
+        react(Emote.LAUGH, 2.0);
+        checkAchievements();
+        return CommandResult.ok(u.getName() + " level " + upgrades.level(id));
+    }
+
+    public CommandResult hireWorker(String id) {
+        if (state == GameState.MENU) return reject("Start the game first");
+        Worker w = staff.get(id);
+        if (w == null) return reject("Unknown helper " + id);
+        if (w.isHired()) return reject(w.getName() + " already works here");
+        if (progress.getLevel() < w.getUnlockLevel()) return reject(w.getName() + " can be hired at level " + w.getUnlockLevel());
+        if (!wallet.spend(w.getHireCost())) return reject("Not enough money (needs P" + (int) w.getHireCost() + ")");
+        w.hire();
+        report.recordSpent(w.getHireCost());
+        progress.hired();
+        emit(EventType.WORKER_HIRED, "id", id, "name", w.getName(), "role", w.getRole().name());
+        emitMoney();
+        react(Emote.LAUGH, 2.0);
+        checkAchievements();
+        return CommandResult.ok(w.getName() + " joined the team!");
+    }
+
+    public CommandResult trainWorker(String id) {
+        if (state == GameState.MENU) return reject("Start the game first");
+        Worker w = staff.get(id);
+        if (w == null || !w.isHired()) return reject("Hire them first");
+        if (w.getLevel() >= Worker.MAX_LEVEL) return reject(w.getName() + " is already a pro");
+        double cost = w.trainCost();
+        if (!wallet.spend(cost)) return reject("Not enough money (needs P" + (int) cost + ")");
+        w.train();
+        report.recordSpent(cost);
+        emit(EventType.WORKER_TRAINED, "id", id, "name", w.getName(), "level", w.getLevel());
+        emitMoney();
+        return CommandResult.ok(w.getName() + " is now level " + w.getLevel());
+    }
+
+    public CommandResult setWorkerResting(String id, boolean resting) {
+        Worker w = staff.get(id);
+        if (w == null || !w.isHired()) return reject("Hire them first");
+        w.setResting(resting);
+        return CommandResult.ok(w.getName() + (resting ? " is resting" : " is back to work"));
+    }
+
+    // ---- StaffContext: what helpers may do (no room restrictions; they walk around themselves) ----
+    @Override public Customer customerWaitingToOrder() {
+        if (state != GameState.PLAYING) return null;
+        return shop.firstAvailableTable() == null ? null : firstInLine();
+    }
+    @Override public boolean staffTakeOrder(Customer c) { return c.getAction() == CustomerAction.IN_LINE && doTakeOrder(c).isOk(); }
+    @Override public Order readyDineInOrder() {
+        for (Order o : orders.values()) {
+            if (o.getStatus() != OrderStatus.READY || o.isDelivery()) continue;
+            Customer c = findCustomer(o.getCustomerId());
+            if (c != null && c.getAction() == CustomerAction.WAITING_FOR_FOOD) return o;
+        }
+        return null;
+    }
+    @Override public boolean staffServe(Order o) { return doServe(o).isOk(); }
+    @Override public Object[] lineForAssistant() {
+        CookingSession mine = kitchen().getSession();
+        for (Order o : orders.values()) {
+            if (!o.isOpen() || o.getStatus() == OrderStatus.READY) continue;
+            int l = o.nextLineToCook();
+            if (l < 0) continue;
+            if (mine != null && mine.getOrderId().equals(o.getId()) && mine.getLineIndex() == l) continue;
+            return new Object[]{o, l};
+        }
+        return null;
+    }
+    @Override public boolean assistantStart(Order o, int line) {
+        OrderLine ol = o.getLines().get(line);
+        List<String> needed = new ArrayList<>(ol.getDish().getIngredientIds());
+        needed.addAll(ol.getExtras());
+        if (!inventory.consume(needed)) { for (String id : inventory.missingFor(needed)) postRestock(id); return false; }
+        o.startCooking(line);
+        return true;
+    }
+    @Override public void assistantFinish(Order o, int line, double quality) {
+        CookedDish d = new CookedDish(o.getLines().get(line).getDish(), Math.min(1, quality + perks().qualityBonus()), false);
+        report.recordCooked();
+        emit(EventType.COOKING_FINISHED, "orderId", o.getId(), "dish", d.getDish().getId(), "quality", round2(d.getQuality()),
+             "stars", d.getCookStars(), "burnt", false, "byStaff", true);
+        if (o.getStatus() == OrderStatus.CANCELLED) return;
+        completeLine(o, line, d);
+    }
+    @Override public Order readyDeliveryOrder() {
+        DeliveryMiniGame mine = delivery().getRun();
+        for (Order o : orders.values())
+            if (o.isDelivery() && o.getStatus() == OrderStatus.READY && (mine == null || !mine.getOrderId().equals(o.getId()))) return o;
+        return null;
+    }
+    @Override public boolean riderDepart(Order o) {
+        if (o.getStatus() != OrderStatus.READY) return false;
+        o.markOutForDelivery();
+        emit(EventType.DELIVERY_STARTED, "orderId", o.getId(), "byRider", true);
+        return true;
+    }
+    @Override public void riderDeliver(Order o, double quality) {
+        Customer c = findCustomer(o.getCustomerId());
+        if (o.getStatus() == OrderStatus.OUT_FOR_DELIVERY && c != null && !c.getAction().isGone()) finishDelivery(o, c, quality, true);
+        else if (o.isOpen()) o.cancel();
+    }
+    @Override public void staffEvent(Worker w, String what) {
+        emit(EventType.STAFF_ACTION, "id", w.getId(), "name", w.getName(), "what", what);
+    }
+
+    // =====================================================================================
+    // Saving (progress persists between sessions; a loaded game starts at the beginning of the next day)
+    // =====================================================================================
+
+    public String exportSave() {
+        Map<String, Object> m = new LinkedHashMap<>();
+        m.put("version", 1);
+        m.put("day", state == GameState.DAY_OVER ? day + 1 : Math.max(1, day));
+        m.put("money", wallet.getBalance());
+        m.put("reputation", reputation);
+        m.put("progress", progress.save());
+        m.put("upgrades", new LinkedHashMap<>(upgrades.levels()));
+        Map<String, Object> st = new LinkedHashMap<>();
+        for (Worker w : staff.all()) {
+            Map<String, Object> wm = new LinkedHashMap<>();
+            wm.put("level", w.getLevel()); wm.put("resting", w.isResting());
+            st.put(w.getId(), wm);
+        }
+        m.put("staff", st);
+        m.put("inventory", new LinkedHashMap<>(inventory.view()));
+        return Json.stringify(m);
+    }
+
+    /** Load a save. Only on the title screen (state MENU); the next Start continues from the saved day. */
+    @SuppressWarnings("unchecked")
+    public CommandResult importSave(String json) {
+        if (state != GameState.MENU) return reject("Load a save from the title screen");
+        Map<String, Object> m;
+        try { m = Json.parseObject(json); } catch (RuntimeException e) { return reject("Save file is damaged"); }
+        day = m.get("day") instanceof Number ? ((Number) m.get("day")).intValue() : 1;
+        double money = m.get("money") instanceof Number ? ((Number) m.get("money")).doubleValue() : config.startingMoney;
+        wallet.spend(wallet.getBalance());
+        wallet.earn(money);
+        if (m.get("reputation") instanceof Number) reputation = ((Number) m.get("reputation")).doubleValue();
+        if (m.get("progress") instanceof Map) progress.load((Map<String, Object>) m.get("progress"));
+        if (m.get("upgrades") instanceof Map)
+            for (Map.Entry<String, Object> e : ((Map<String, Object>) m.get("upgrades")).entrySet())
+                if (e.getValue() instanceof Number) upgrades.setLevel(e.getKey(), ((Number) e.getValue()).intValue());
+        if (m.get("staff") instanceof Map)
+            for (Map.Entry<String, Object> e : ((Map<String, Object>) m.get("staff")).entrySet()) {
+                Worker w = staff.get(e.getKey());
+                if (w == null || !(e.getValue() instanceof Map)) continue;
+                Map<String, Object> wm = (Map<String, Object>) e.getValue();
+                if (wm.get("level") instanceof Number) w.setLevel(((Number) wm.get("level")).intValue());
+                w.setResting(Boolean.TRUE.equals(wm.get("resting")));
+            }
+        if (m.get("inventory") instanceof Map)
+            for (Map.Entry<String, Object> e : ((Map<String, Object>) m.get("inventory")).entrySet())
+                if (e.getValue() instanceof Number && catalog.contains(e.getKey())) {
+                    int want = ((Number) e.getValue()).intValue(), have = inventory.get(e.getKey());
+                    if (want > have) inventory.add(e.getKey(), want - have);
+                    else if (want < have) for (int i = 0; i < have - want; i++) inventory.consume(java.util.Collections.singletonList(e.getKey()));
+                }
+        while (shop.getTables().size() < config.tableCount + upgrades.level(UpgradeShop.TABLES)) shop.addTable();
+        refreshMenu();
+        emit(EventType.GAME_LOADED, "day", day, "level", progress.getLevel(), "money", wallet.getBalance());
+        return CommandResult.ok("Welcome back! Day " + day);
     }
 
     // =====================================================================================
@@ -550,6 +867,7 @@ public class GameEngine implements GameContext {
     public boolean isClosed() { return closed; }
     public double getReputation() { return reputation; }
     public Menu getMenu() { return menu; }
+    public Menu getFullMenu() { return fullMenu; }
     public IngredientCatalog getCatalog() { return catalog; }
     public Market getMarket() { return market; }
     public TaskBoard getTaskBoard() { return taskBoard; }
@@ -561,4 +879,8 @@ public class GameEngine implements GameContext {
     public CookingSession getCookingSession() { return kitchen().getSession(); }
     public DeliveryMiniGame getDeliveryRun() { return delivery().getRun(); }
     public Task getActiveChore() { return diner().getActiveTask(); }
+    public Progression getProgress() { return progress; }
+    public UpgradeShop getUpgrades() { return upgrades; }
+    public Staff getStaff() { return staff; }
+    public KitchenPerks getPerks() { return perks(); }
 }

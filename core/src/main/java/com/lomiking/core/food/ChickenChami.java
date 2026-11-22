@@ -13,12 +13,12 @@ public class ChickenChami extends Dish {
     @Override public List<String> getIngredientIds() {
         return Arrays.asList(NOODLES, CHICKEN, CABBAGE, CARROT, GARLIC, ONION, OIL, SOY_SAUCE, OYSTER_SAUCE, SUGAR, CHILI_FLAKES);
     }
-    @Override protected List<CookingStep> buildSteps() {
+    @Override protected List<CookingStep> buildSteps(KitchenPerks p) {
         return Arrays.asList(
-            new ChopStep("chicken", CHICKEN, 3),
-            new ChopStep("cabbage", CABBAGE, 3),
-            new ChopStep("carrot", CARROT, 2),
-            new FanFireStep("Get the wok screaming hot", 2.5),
+            new ChopStep("chicken", CHICKEN, p.cuts(3)),
+            new ChopStep("cabbage", CABBAGE, p.cuts(3)),
+            new ChopStep("carrot", CARROT, p.cuts(2)),
+            new FanFireStep("Get the wok screaming hot", p.zoneTime(2.5), p.heatGain()),
             new AddIngredientsStep("Saute the chicken", Arrays.asList(OIL, GARLIC, ONION, CHICKEN)),
             new AddIngredientsStep("Toss in veggies and noodles", Arrays.asList(CABBAGE, CARROT, NOODLES)),
             new AddIngredientsStep("Pour the chami sauce", Arrays.asList(SOY_SAUCE, OYSTER_SAUCE)),

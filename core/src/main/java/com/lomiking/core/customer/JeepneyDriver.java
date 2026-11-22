@@ -14,7 +14,7 @@ public class JeepneyDriver extends Customer {
     @Override protected double basePatience() { return 40; }
     @Override protected List<Dish> chooseDishes(Menu menu, Random rng) {
         List<Dish> out = new ArrayList<>();
-        out.add(rng.nextBoolean() ? menu.get("tapsilog") : menu.get("lomi_overload"));
+        out.add(menu.getOrAny(rng.nextBoolean() ? "tapsilog" : "lomi_overload", rng));
         return out;
     }
     @Override protected double qualityWeight() { return 0.4; }

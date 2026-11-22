@@ -69,6 +69,8 @@ synchronous (`isBlockingSynchronousMethod`). Over HTTP the same JSON goes throug
 | **Encapsulation** | State changes only go through methods that check the rules: `Order.markServed()` throws unless READY, `Inventory.consume()` is all-or-nothing, `Wallet.spend()` refuses overspending, `Table.seat()` is package-private to `Shop`. |
 | **Design patterns** | State (`Scene`, `CustomerAction`, `OrderStatus`, `TaskStatus`, `GameState`), Command (`GameCommand`), Observer (`EventBus`), Factory (`CustomerFactory`, `Menu.standard()`), Template Method (`CookingStep.update` -> `onUpdate`, `Task.update` -> `isGoalMet`), Facade (`GameBridge`). |
 
+**v2 packages:** `upgrade/` (abstract `Upgrade` with 8 subclasses, cost curve in the base class: Template Method), `staff/` (abstract `Worker`, 4 subclasses each overriding `work()`, they act through the narrow `StaffContext` interface the engine implements), `progress/` (`Progression`, `Unlocks`, abstract `DailyGoal` with 6 subclasses, `Achievement`), `cooking/KitchenPerks` (upgrade levels the cooking steps read: Strategy-like parameter object).
+
 ## 4. State machines
 
 **Game:** `MENU -> PLAYING <-> PAUSED`, `PLAYING -> DAY_OVER -> PLAYING (next day)`
@@ -112,7 +114,11 @@ Chores create gameplay pressure. A customer can't be seated at a dirty table, an
 {"cmd":"startTask","taskId":"t4"}
 {"cmd":"buy","ingredientId":"egg","qty":10}
 {"cmd":"deliver","orderId":"o2"}
+{"cmd":"buyUpgrade","id":"tables"}           tables | knife | stove | decor | supplier | scooter | sign | recipe
+{"cmd":"hire","id":"server"}                 server | cleaner | rider | cook
+{"cmd":"train","id":"server"}                {"cmd":"rest","id":"cook","resting":true}
 ```
+Saves: `GameBridge.exportSave()` returns JSON; `importSave(json)` restores it (title screen only).
 Every call returns `{"ok":true|false,"message":"..."}`. Rejections also arrive as a `COMMAND_REJECTED` event, so the UI can show a toast.
 
 ## 7. Where to change things

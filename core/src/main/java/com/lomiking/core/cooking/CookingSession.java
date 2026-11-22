@@ -21,9 +21,13 @@ public class CookingSession {
     private int current;
     private CookedDish result;
 
-    public CookingSession(String orderId, int lineIndex, Dish dish, List<String> extras) {
-        this.orderId = orderId; this.lineIndex = lineIndex; this.dish = dish;
-        this.steps = dish.createSteps(extras);
+    private final KitchenPerks perks;
+
+    public CookingSession(String orderId, int lineIndex, Dish dish, List<String> extras) { this(orderId, lineIndex, dish, extras, KitchenPerks.NONE); }
+
+    public CookingSession(String orderId, int lineIndex, Dish dish, List<String> extras, KitchenPerks perks) {
+        this.orderId = orderId; this.lineIndex = lineIndex; this.dish = dish; this.perks = perks;
+        this.steps = dish.createSteps(extras, perks);
     }
 
     public void begin(Listener l) {
@@ -55,7 +59,7 @@ public class CookingSession {
     private CookedDish buildResult() {
         double sum = 0; boolean burnt = false;
         for (CookingStep s : steps) { sum += s.getScore(); burnt |= s.isBurnt(); }
-        double quality = sum / steps.size();
+        double quality = Math.min(1, sum / steps.size() + perks.qualityBonus());
         if (burnt) quality = Math.min(quality, 0.35);
         return new CookedDish(dish, quality, burnt);
     }

@@ -20,6 +20,8 @@ import java.util.Map;
  *   POST /step    {"dt":0.05,"commands":[...]}  -> same JSON as GameBridge.step
  *   POST /reset   {"seed":7}                    -> new game (optional: dayLength, deliveryChance)
  *   GET  /catalog                               -> menu + ingredients
+ *   GET  /save                                  -> progress JSON (the app stores it)
+ *   POST /load    <save json>                   -> restore progress (title screen)
  */
 public final class DevServer {
     private static volatile GameBridge bridge = new GameBridge();
@@ -39,12 +41,16 @@ public final class DevServer {
                 Map<String, Object> m = Json.parseObject(body);
                 if (m.get("seed") instanceof Number) cfg.seed(((Number) m.get("seed")).longValue());
                 if (m.get("dayLength") instanceof Number) cfg.dayLength(((Number) m.get("dayLength")).doubleValue());
+                if (m.get("startLevel") instanceof Number) cfg.startLevel(((Number) m.get("startLevel")).intValue());
+                if (m.get("money") instanceof Number) cfg.startingMoney = ((Number) m.get("money")).doubleValue();
                 if (m.get("deliveryChance") instanceof Number) cfg.deliveryChance(((Number) m.get("deliveryChance")).doubleValue());
             }
             bridge = new GameBridge(cfg);
             return "{\"ok\":true}";
         }));
         server.createContext("/catalog", ex -> handle(ex, body -> bridge.catalog()));
+        server.createContext("/save", ex -> handle(ex, body -> bridge.exportSave()));
+        server.createContext("/load", ex -> handle(ex, body -> bridge.importSave(body)));
         server.createContext("/", ex -> handle(ex, body -> "{\"name\":\"LomiKing dev server\",\"ok\":true}"));
         server.start();
         System.out.println("LomiKing Java logic running on http://localhost:" + port + "  (Ctrl+C to stop)");

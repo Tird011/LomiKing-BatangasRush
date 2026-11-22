@@ -11,13 +11,13 @@ public class Tapsilog extends Dish {
     public Tapsilog() { super("tapsilog", "Tapsilog", 110); }
     @Override public DishCategory getCategory() { return DishCategory.SILOG; }
     @Override public List<String> getIngredientIds() { return Arrays.asList(TAPA, RICE, EGG, GARLIC, OIL, SALT); }
-    @Override protected List<CookingStep> buildSteps() {
+    @Override protected List<CookingStep> buildSteps(KitchenPerks p) {
         return Arrays.asList(
-            new FryStep("tapa", 4.0, true),
+            new FryStep("tapa", 4.0, true, p.timingTolerance()),
             new AddIngredientsStep("Make the sinangag", Arrays.asList(OIL, GARLIC, RICE)),
             new StirStep("Toss the garlic rice", 2),
             new SeasonStep("salt", SALT, 1),
-            new FryStep("egg (sunny-side up)", 3.0, false));
+            new FryStep("egg (sunny-side up)", 3.0, false, p.timingTolerance()));
     }
     @Override public double getDeliveryFragility() { return 0.25; }
     @Override public List<String> getPossibleExtras() { return Arrays.asList(VINEGAR, ATSARA, SILI); }

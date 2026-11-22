@@ -23,14 +23,14 @@ public class LomiBatangas extends Dish {
         return ids;
     }
 
-    @Override protected List<CookingStep> buildSteps() {
+    @Override protected List<CookingStep> buildSteps(KitchenPerks p) {
         return Arrays.asList(
-            new ChopStep("liver", LIVER, 3),
-            new ChopStep("onion", ONION, 3),
+            new ChopStep("liver", LIVER, p.cuts(3)),
+            new ChopStep("onion", ONION, p.cuts(3)),
             new AddIngredientsStep("Saute garlic, onion and meat", Arrays.asList(OIL, GARLIC, ONION, PORK, LIVER)),
-            new FanFireStep("Bring the broth to a boil", 3.0),
+            new FanFireStep("Bring the broth to a boil", p.zoneTime(3.0), p.heatGain()),
             new AddIngredientsStep("Pour in the broth and noodles", Arrays.asList(PORK_BROTH, NOODLES)),
-            new BoilStep("noodles", 5.0),
+            new BoilStep("noodles", 5.0, p.timingTolerance()),
             new AddIngredientsStep("Thicken with cornstarch and egg", Arrays.asList(CORNSTARCH, EGG)),
             new StirStep("Stir until thick and silky", 3),
             new SeasonStep("salt", SALT, 2),

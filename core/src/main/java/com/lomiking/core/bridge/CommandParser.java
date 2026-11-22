@@ -21,6 +21,8 @@ import java.util.Map;
  * {"cmd":"buy","ingredientId":"egg","qty":10}
  * {"cmd":"deliver","orderId":"o2"}
  * {"cmd":"pause"} {"cmd":"resume"} {"cmd":"nextDay"}
+ * {"cmd":"buyUpgrade","id":"tables"}   {"cmd":"hire","id":"server"}   {"cmd":"train","id":"server"}
+ * {"cmd":"rest","id":"cleaner","resting":true}
  * </pre>
  */
 public final class CommandParser {
@@ -43,6 +45,10 @@ public final class CommandParser {
             case "startTask": return new StartTaskCommand(required(m, "taskId"));
             case "buy": return new BuyCommand(required(m, "ingredientId"), (int) num(m, "qty", 1));
             case "deliver": return new StartDeliveryCommand(str(m, "orderId"));
+            case "buyUpgrade": return new BuyUpgradeCommand(required(m, "id"));
+            case "hire": return new HireWorkerCommand(required(m, "id"));
+            case "train": return new TrainWorkerCommand(required(m, "id"));
+            case "rest": return new RestWorkerCommand(required(m, "id"), Boolean.TRUE.equals(m.get("resting")));
             case "input":
                 return new InputCommand(new PlayerInput(InputType.valueOf(required(m, "type")), num(m, "value", 0),
                         str(m, "itemId"), num(m, "dx", 0), num(m, "dy", 0)));

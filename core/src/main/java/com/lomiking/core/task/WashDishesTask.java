@@ -18,7 +18,7 @@ public class WashDishesTask extends Task {
     }
     @Override public boolean isInteractive() { return true; }
     @Override public double getProgress() { return Math.min(1, (double) scrubs / (dishes * SCRUBS_PER_DISH)); }
-    @Override protected boolean isGoalMet(GameContext ctx) { return getProgress() >= 1; }
+    @Override protected boolean isGoalMet(GameContext ctx) { return getProgress() >= 1 || ctx.shop().getDirtyDishes() == 0; }
     @Override protected void onInput(PlayerInput in, GameContext ctx) {
         if (in.getType() != InputType.TAP && in.getType() != InputType.CIRCLE) return;
         scrubs++;

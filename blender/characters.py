@@ -164,6 +164,51 @@ def build_customer(name, cfg):
     print(name, 'tris', stats())
     export(OUT + name + '.glb')
 
+WORKERS = {
+    'worker_server':  dict(skin='wall2', shirt='pink', pants='black', shoes='black', hair='bun', apron='mint', extra='bowtie'),
+    'worker_cleaner': dict(skin='skin', shirt='green', pants='pants', shoes='tsinelas', hair='short', apron='yellow', extra='bandana'),
+    'worker_rider':   dict(skin='brown', shirt='jacket', pants='black', shoes='black', hair='short', apron=None, extra='helmet'),
+    'worker_cook':    dict(skin='skin', shirt='chef', pants='black', shoes='black', hair='short', apron='white', extra='toque'),
+}
+
+def build_worker(name, cfg):
+    reset()
+    skin = cfg['skin']
+    hp = [head_ellipsoid('HeadSkin', m=skin)] + customer_hair(cfg['hair']) + ears(skin) + simple_face()
+    hp.append(cyl('Neck', 0.32, 0.4, (0, 0, -1.35), m=skin, bevel=0))
+    ex = cfg['extra']
+    if ex == 'bandana':
+        b = sphere('Bandana', 1, (0, 0, 0.05), (1.09, 1.05, 1.52), m='red', seg=40, rings=24)
+        trim(b, lambda c: c.z > 0.55)
+        s = b.modifiers.new('solid', 'SOLIDIFY'); s.thickness = 0.05; s.offset = 1
+        hp += [b, sphere('Knot', 0.18, (0, 0.95, 0.9), m='red', seg=16, rings=10)]
+    elif ex == 'helmet':
+        h = sphere('Helmet', 1, (0, 0, 0.2), (1.18, 1.14, 1.45), m='helmet', seg=40, rings=24)
+        trim(h, lambda c: c.z > 0.1)
+        s = h.modifiers.new('solid', 'SOLIDIFY'); s.thickness = 0.08; s.offset = 1
+        hp += [h, box('Visor', (1.4, 0.1, 0.35), (0, -1.05, 0.55), (15, 0, 0), m='glass', bevel=0.05)]
+    elif ex == 'toque':
+        hp += [cyl('ToqueBand', 0.95, 0.35, (0, 0, 1.25), m='chef', bevel=0.05),
+               sphere('ToquePuff', 1.05, (0, 0, 1.75), (1, 1, 0.65), m='chef', seg=32, rings=16)]
+    bp = body(shirt=cfg['shirt'], pants=cfg['pants'], shoes=cfg['shoes'], apron=False)
+    if cfg.get('apron'):
+        ap = lathe('Apron', [(0, 0.82), (0.83, 0.82), (0.96, 1.07), (1.0, 1.45), (0.93, 1.78), (0, 1.78)], m=cfg['apron'], seg=48)
+        trim(ap, lambda c: c.y < -0.12 and 0.8 < c.z < 1.79 and abs(c.x) < 0.86)
+        s = ap.modifiers.new('solid', 'SOLIDIFY'); s.thickness = 0.03; s.offset = 1
+        bp.append(ap)
+    if ex == 'bowtie':
+        for sx in (-1, 1): bp.append(cone('Bow', 0.14, 0.03, 0.22, (0.11 * sx, -0.66, 2.0), (0, 90 * sx, 0), m='red', verts=12))
+    if ex == 'bandana':
+        for sx in (-1, 1): bp.append(sphere('Glove', 0.25, (1.28 * sx, -0.2, 0.98), m='glove', seg=16, rings=10))
+    arms = [arm('L', skin), arm('R', skin)]
+    finish_character(name, hp, bp, arms, head_z=3.45, scale=0.24)
+    export(OUT + name + '.glb')
+    print(name, 'tris', stats())
+
 if __name__ == '__main__':
-    build_kaloy()
-    for n, c in CUSTOMERS.items(): build_customer(n, c)
+    which = (sys.argv[sys.argv.index('--') + 1:] if '--' in sys.argv else []) or ['kaloy', 'customers', 'workers']
+    if 'kaloy' in which: build_kaloy()
+    if 'customers' in which:
+        for n, c in CUSTOMERS.items(): build_customer(n, c)
+    if 'workers' in which:
+        for n, c in WORKERS.items(): build_worker(n, c)

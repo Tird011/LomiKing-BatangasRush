@@ -15,7 +15,7 @@ public abstract class Customer {
     private final String name;
     private CustomerAction action = CustomerAction.ARRIVING;
     private double patience;
-    private final double maxPatience;
+    private double maxPatience;
     private double arriveTimer = 1.5, eatTimer;
     private Order order;
     private int tableId = -1;
@@ -27,6 +27,13 @@ public abstract class Customer {
         this.id = id; this.name = name;
         this.maxPatience = basePatience();
         this.patience = maxPatience;
+    }
+
+    /** Cozy pacing and decor upgrades make everyone more patient. */
+    public void scalePatience(double factor) {
+        if (factor <= 0) return;
+        maxPatience *= factor;
+        patience *= factor;
     }
 
     // ---- what each type decides (polymorphism) ----

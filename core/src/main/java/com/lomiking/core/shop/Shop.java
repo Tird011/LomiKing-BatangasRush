@@ -13,6 +13,7 @@ public class Shop {
     public Shop(int tableCount) { for (int i = 1; i <= tableCount; i++) tables.add(new Table(i)); }
 
     public List<Table> getTables() { return Collections.unmodifiableList(tables); }
+    public void addTable() { tables.add(new Table(tables.size() + 1)); }
     public Table getTable(int id) {
         for (Table t : tables) if (t.getId() == id) return t;
         throw new IllegalArgumentException("No table " + id);

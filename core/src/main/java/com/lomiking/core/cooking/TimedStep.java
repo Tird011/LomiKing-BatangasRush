@@ -12,16 +12,19 @@ public abstract class TimedStep extends CookingStep {
     private boolean burnt;
     private double finishedAt = -1;
 
-    protected TimedStep(String title, double targetSeconds) {
+    protected final double tolerance;
+
+    protected TimedStep(String title, double targetSeconds, double tolerance) {
         super(title);
         this.targetSeconds = targetSeconds;
+        this.tolerance = Math.max(1, tolerance);
     }
     @Override public InputType getGesture() { return InputType.TAP; }
     @Override public double getProgress() { return clamp01(elapsed / targetSeconds); }
     @Override public boolean isBurnt() { return burnt; }
 
     /** Score for one timed tap: 1.0 exactly on time, 0 at +-100% off. */
-    protected double timingScore(double at, double target) { return clamp01(1 - Math.abs(at - target) / target); }
+    protected double timingScore(double at, double target) { return clamp01(1 - Math.abs(at - target) / (target * tolerance)); }
 
     protected void finish(double at) { finishedAt = at; markComplete(); }
     public double getFinishedAt() { return finishedAt; }

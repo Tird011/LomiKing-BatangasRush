@@ -175,21 +175,14 @@ def kitchen_room():
     export(OUT + 'kitchen.glb'); print('kitchen', stats())
 
 # --------------------------------------------------------------------------------------------- diner
-TABLES = [(-2.0, 0.6), (2.0, 0.6), (-2.0, 3.0), (2.0, 3.0)]
+# Six table spots (Blender x, y). The app places as many as the player owns: mobile/src/three/rooms/DinerRoom.ts
+TABLES = [(-1.5, 0.5), (1.5, 0.5), (-1.5, 2.8), (1.5, 2.8), (-3.5, 1.65), (3.5, 1.65)]
 def diner_room():
     reset()
     p = [floor_tiles('Floor', 9, 8, 0.75, 'floor', 'cream')]
     p += [box('BackWall', (9, 0.2, 3), (0, 4.6, 1.5), m='wall'), box('WallL', (0.2, 8, 3), (-4.5, 0.6, 1.5), m='wall2'), box('WallR', (0.2, 8, 3), (4.5, 0.6, 1.5), m='wall2')]
     for i in range(3): p += [box('Window', (1.6, 0.08, 1.0), (-3 + i * 3, 4.48, 1.8), m='glass', bevel=0), box('WinFrame', (1.75, 0.06, 1.15), (-3 + i * 3, 4.52, 1.8), m='white', bevel=0.02)]
-    tables = []
-    for n, (x, y) in enumerate(TABLES, 1):
-        t = [cyl('Top', 0.6, 0.06, (0, 0, 0.76), m='wood_light', bevel=0.02), cyl('Leg', 0.06, 0.74, (0, 0, 0.37), m='dark_steel', verts=12, bevel=0),
-             cyl('Foot', 0.32, 0.04, (0, 0, 0.02), m='dark_steel', bevel=0.01),
-             cyl('Holder', 0.07, 0.18, (0.25, 0.1, 0.88), m='glass', verts=12, bevel=0.01), cyl('Holder2', 0.06, 0.16, (0.38, 0.1, 0.87), m='black', verts=12, bevel=0.01)]
-        tt = join(f'Table{n}', t); tt.location = (x, y, 0)
-        tables.append(tt)
-        tables.append(monobloc(f'Chair{n}a', (x, y - 0.85, 0), 0, 'monoblock'))
-        tables.append(monobloc(f'Chair{n}b', (x, y + 0.85, 0), 180, 'plastic_red'))
+    tables = []   # tables are placed by the app (table_set.glb) so the Extra Table upgrade can add them
     # wash station on the left wall + dish rack
     p += [box('Sink', (0.9, 1.6, 0.9), (-3.95, -2.2, 0.45), m='steel', bevel=0.03), box('SinkBasin', (0.6, 1.0, 0.08), (-3.95, -2.2, 0.88), m='dark_steel', bevel=0.02),
           cyl('Faucet', 0.03, 0.4, (-4.25, -2.2, 1.1), m='steel', verts=8, bevel=0)]
@@ -203,6 +196,78 @@ def diner_room():
     p += [box('TV', (1.3, 0.1, 0.8), (0, 4.45, 2.3), m='black', bevel=0.03), potted_plant('Plant', (3.9, 4.0, 0), 1.3), potted_plant('Plant2', (-3.9, 4.0, 0), 1.1)]
     group('Diner', p + tables + [rk, broom])
     export(OUT + 'diner.glb'); print('diner', stats())
+
+def table_set():
+    reset()
+    t = [cyl('Top', 0.6, 0.06, (0, 0, 0.76), m='wood_light', bevel=0.02), cyl('Leg', 0.06, 0.74, (0, 0, 0.37), m='dark_steel', verts=12, bevel=0),
+         cyl('Foot', 0.32, 0.04, (0, 0, 0.02), m='dark_steel', bevel=0.01),
+         cyl('Holder', 0.07, 0.18, (0.25, 0.1, 0.88), m='glass', verts=12, bevel=0.01), cyl('Holder2', 0.06, 0.16, (0.38, 0.1, 0.87), m='black', verts=12, bevel=0.01)]
+    tt = join('Table', t)
+    a = monobloc('ChairFront', (0, -0.85, 0), 0, 'monoblock')
+    b = monobloc('ChairBack', (0, 0.85, 0), 180, 'plastic_red')
+    group('TableSet', [tt, a, b])
+    export(OUT + 'table_set.glb'); print('table_set', stats())
+
+def decor():
+    """Visible rewards for the Pinoy Decor upgrade: each level adds a group (Decor1..Decor4)."""
+    reset()
+    # 1: banderitas (fiesta flags) across the ceiling
+    flags = []
+    for row, y in enumerate((-1.5, 1.0, 3.5)):
+        flags.append(cyl('String', 0.01, 9.0, (0, y, 2.75), (0, 90, 0), m='black', verts=6, bevel=0))
+        for i in range(18):
+            x = -4.25 + i * 0.5
+            sag = 0.18 * math.sin(i / 17 * math.pi)
+            flags.append(cone('Flag', 0.14, 0.0, 0.26, (x, y, 2.6 - sag), (0, 0, 45), m=['flag1', 'flag2', 'flag3', 'flag4'][(i + row) % 4], verts=3))
+    g1 = group('Decor1', flags)
+    # 2: plants + jeepney poster + framed calendar
+    d2 = [potted_plant('PlantA', (-4.0, 4.0, 0), 1.5), potted_plant('PlantB', (4.0, 4.0, 0), 1.5), potted_plant('PlantC', (4.0, -2.6, 0), 1.2),
+          box('Poster', (1.6, 0.05, 1.0), (-2.6, 4.45, 1.9), m='jeep_body', bevel=0.02), box('PosterJeep', (1.0, 0.04, 0.45), (-2.6, 4.42, 1.85), m='jeep_red', bevel=0.05),
+          box('PosterStripe', (1.0, 0.03, 0.08), (-2.6, 4.40, 1.75), m='jeep_blue', bevel=0)]
+    g2 = group('Decor2', d2)
+    # 3: capiz shell lamps hanging over the tables
+    d3 = []
+    for (x, y) in TABLES:
+        d3.append(cyl('LampCord', 0.01, 0.6, (x, y, 2.7), m='black', verts=6, bevel=0))
+        d3.append(cone('Capiz', 0.32, 0.12, 0.3, (x, y, 2.3), m='capiz', verts=12))
+        d3.append(sphere('Bulb', 0.07, (x, y, 2.15), m='yellow', seg=10, rings=6))
+    g3 = group('Decor3', d3)
+    # 4: videoke machine with speakers (very Pinoy)
+    d4 = [box('Videoke', (0.9, 0.6, 1.3), (3.6, 3.9, 0.65), m='black', bevel=0.06), box('VScreen', (0.7, 0.05, 0.45), (3.6, 3.58, 1.0), m='blue', bevel=0.01),
+          box('VPanel', (0.7, 0.05, 0.25), (3.6, 3.58, 0.55), m='red', bevel=0.01), cyl('Mic', 0.04, 0.3, (3.2, 3.6, 1.35), (30, 0, 0), m='dark_steel', verts=8, bevel=0)]
+    for sx in (-1, 1): d4 += [box('Speaker', (0.45, 0.4, 0.8), (3.6 + 0.75 * sx, 3.95, 0.4), m='wood_dark', bevel=0.04), cyl('Woofer', 0.15, 0.03, (3.6 + 0.75 * sx, 3.74, 0.35), (90, 0, 0), m='black', bevel=0.01)]
+    g4 = group('Decor4', d4)
+    export(OUT + 'decor.glb'); print('decor', stats())
+
+def neon_sign():
+    reset()
+    p = [box('NeonBack', (3.2, 0.12, 0.7), (0, 0, 0), m='black', bevel=0.06),
+         text('NeonText', 'BUKAS NA!', 0.38, (0, -0.08, -0.02), m='neon', depth=0.04)]
+    for i in range(10): p.append(sphere('NeonDot', 0.05, (-1.45 + i * 0.32, -0.08, 0.3), m=['neon', 'yellow'][i % 2], seg=8, rings=6))
+    group('NeonSign', p)
+    export(OUT + 'neon.glb'); print('neon', stats())
+
+def kitchen_props():
+    """Things that get chopped, plus tools Mang Kaloy and the staff hold."""
+    reset()
+    items = []
+    on = [sphere('OnionBulb', 0.13, (0, 0, 0.12), (1, 1, 0.9), m='onion', seg=20, rings=12), cone('OnionTip', 0.04, 0.0, 0.08, (0, 0, 0.26), m='onion', verts=10)]
+    items.append(join('Onion', on))
+    items.append(join('LiverSlab', [sphere('Liver', 0.2, (0, 0, 0.05), (1.3, 0.8, 0.25), m='liver', seg=20, rings=10)]))
+    items.append(join('ChickenPiece', [sphere('Meat', 0.14, (0, 0, 0.12), (1.1, 1, 0.9), m='wall2', seg=16, rings=10),
+                                        capsule('Bone', 0.035, 0.2, (0.1, 0, 0.1), (0.3, 0, 0.12), m='white')]))
+    items.append(join('Cabbage', [sphere('CabHead', 0.18, (0, 0, 0.16), m='cabbage', seg=20, rings=12),
+                                  sphere('CabLeaf', 0.2, (0.03, 0.02, 0.15), (1.05, 1.05, 0.7), m='green', seg=20, rings=10)]))
+    items.append(join('Carrot', [cone('CarrotBody', 0.06, 0.015, 0.42, (0, 0, 0.05), (0, 90, 0), m='orange', verts=14),
+                                 cone('CarrotTop', 0.04, 0.0, 0.12, (-0.26, 0, 0.06), (0, -90, 0), m='leaf', verts=8)]))
+    items.append(join('Ladle', [sphere('LadleCup', 0.08, (0, 0, 0), (1, 1, 0.6), m='steel', seg=14, rings=8), cyl('LadleHandle', 0.015, 0.5, (0, 0, 0.27), m='wood_dark', verts=8, bevel=0)]))
+    items.append(join('Shaker', [cyl('ShakerBody', 0.06, 0.16, (0, 0, 0.08), m='glass', verts=14, bevel=0.01), sphere('ShakerCap', 0.06, (0, 0, 0.17), (1, 1, 0.5), m='steel', seg=14, rings=8)]))
+    items.append(join('Rag', [box('Cloth', (0.3, 0.22, 0.04), (0, 0, 0.02), m='blue', bevel=0.015)]))
+    items.append(join('Sponge', [box('SpongeBody', (0.16, 0.1, 0.06), (0, 0, 0.03), m='yellow', bevel=0.02), box('Scrub', (0.16, 0.1, 0.02), (0, 0, 0.07), m='green', bevel=0.005)]))
+    items.append(join('HandBroom', [cyl('Stick', 0.02, 1.0, (0, 0, 0.5), m='wood_light', verts=8, bevel=0), cone('Bristles', 0.04, 0.18, 0.35, (0, 0, -0.05), (180, 0, 0), m='wood', verts=14)]))
+    items.append(join('Tray', [cyl('TrayDisc', 0.3, 0.03, (0, 0, 0), m='steel', bevel=0.01), torus('TrayRim', 0.3, 0.015, (0, 0, 0.02), m='steel', mseg=6)]))
+    for i, o in enumerate(items): o.location.x = i * 0.7
+    export(OUT + 'props.glb'); print('props', stats())
 
 # --------------------------------------------------------------------------------------------- delivery hub + scooter
 def scooter_parts():
@@ -358,7 +423,8 @@ def food_props():
     export(OUT + 'food.glb'); print('food', stats())
 
 if __name__ == '__main__':
-    which = (sys.argv[sys.argv.index('--') + 1:] if '--' in sys.argv else []) or ['house', 'counter', 'kitchen', 'diner', 'hub', 'scooter', 'road', 'obstacles', 'food']
+    which = (sys.argv[sys.argv.index('--') + 1:] if '--' in sys.argv else []) or ['house', 'counter', 'kitchen', 'diner', 'hub', 'scooter', 'road', 'obstacles', 'food', 'tables', 'decor', 'neon', 'props']
     for w in which:
         {'house': lomi_house, 'counter': counter_room, 'kitchen': kitchen_room, 'diner': diner_room, 'hub': hub_room,
-         'scooter': scooter_only, 'road': road, 'obstacles': obstacles, 'food': food_props}[w]()
+         'scooter': scooter_only, 'road': road, 'obstacles': obstacles, 'food': food_props,
+         'tables': table_set, 'decor': decor, 'neon': neon_sign, 'props': kitchen_props}[w]()
