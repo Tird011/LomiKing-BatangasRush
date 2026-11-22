@@ -59,6 +59,21 @@ synchronous (`isBlockingSynchronousMethod`). Over HTTP the same JSON goes throug
 - Characters are rigid parts animated procedurally (walk bob, arm swings, chop/stir/fan poses).
 - Each room has a landscape and a portrait camera (the bottom panel covers ~40% of a phone screen).
 
+## 2c. Lighting & world (mobile/src/three)
+
+| File | Role |
+|---|---|
+| `world/DayCycle.ts` | Colour script: keyframed sky, sun, ambient, fog, rim colours per hour; `sampleDay(hour)` fills one reusable `Lighting` object |
+| `world/Atmosphere.ts` | One shared sky dome (sun, moon, stars), instanced clouds, hazy ridgelines, ground, sun/hemisphere/2 lamp lights. Re-parented into whichever room is shown, so every room has the same light set and shaders never recompile |
+| `world/Surroundings.ts` + `world/Kit.ts` | Places `world_kit.glb` pieces around each room; pieces are baked to vertex colours and drawn as `InstancedMesh` |
+| `world/Beams.ts` | Sunbeams through window panes + dust motes / fireflies |
+| `toon.ts` | Toon material patch: soft two-step terminator, rim light, cloud shadows, wind sway; glow materials; outlines |
+| `PostFX.ts` | Scene → offscreen target (render scale) → bloom (1/4 + 1/8) → grade/tonemap/vignette/dither; quality tiers |
+| `Particles.ts` | Object pool for effect meshes (no allocation while cooking) |
+| `../feel/Feel.ts` | Music crossfades, sound effects and haptics, driven by game events |
+
+Each room declares a `rig` (sun azimuth, shadow box, night lamp positions, fog) and calls `world()` at the end of `build()`.
+
 ## 3. OOP map (what to point at for grading)
 
 | Principle | Where |

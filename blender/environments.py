@@ -130,7 +130,12 @@ def counter_room():
 def kitchen_room():
     reset()
     p = [floor_tiles('Floor', 7, 5, 0.5, 'tile', 'white')]
-    p += [box('BackWall', (7, 0.2, 3), (0, 1.6, 1.5), m='white')]
+    # back wall with a window over the rice cooker (sunlight and the street outside come in through it)
+    p += [box('BackWall', (5.4, 0.2, 3), (-0.8, 1.6, 1.5), m='white'), box('BackWallR', (0.3, 0.2, 3), (3.35, 1.6, 1.5), m='white'),
+          box('BackWallLow', (1.3, 0.2, 2.05), (2.55, 1.6, 1.025), m='white'), box('BackWallTop', (1.3, 0.2, 0.25), (2.55, 1.6, 2.875), m='white'),
+          box('Window', (1.3, 0.04, 0.7), (2.55, 1.62, 2.4), m='glass', bevel=0), box('WinFrame', (1.4, 0.05, 0.08), (2.55, 1.5, 2.04), m='wood', bevel=0.01),
+          box('WinFrame', (1.4, 0.05, 0.08), (2.55, 1.5, 2.76), m='wood', bevel=0.01), box('WinFrame', (0.06, 0.05, 0.7), (2.55, 1.5, 2.4), m='wood', bevel=0)]
+    p.append(potted_plant('SillPlant', (2.15, 1.42, 2.08), 0.55))
     for i in range(14):           # tiled backsplash
         for j in range(4):
             if (i + j) % 2: p.append(box('Splash', (0.48, 0.02, 0.28), (-3.25 + i * 0.5, 1.49, 1.1 + j * 0.3), m='teal', bevel=0))
